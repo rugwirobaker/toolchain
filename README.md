@@ -4,6 +4,13 @@ One-shot seeding of new workstations with development tools. The first thing to 
 
 **Note:** This is a personal toolchain and hence opinionated about tool selection and installation methods.
 
+## Requirements
+
+- **Bash 4.0+** - Required for individual tool scripts
+- **curl** or **wget** - For downloading
+- **tar**, **jq** - Basic utilities (jq bootstrapped automatically if missing)
+- Supported platforms: Linux (x86_64, aarch64), macOS (Intel, Apple Silicon)
+
 ## Installation
 
 ```bash
@@ -55,7 +62,32 @@ curl -fsSL https://toolchain.acodechef.dev/install.sh | sh -s -- --only-jq
 - Auto-adds `~/.local/bin` to PATH
 
 ### Rust Script
+```bash
+./rust.sh                              # Latest stable Rust + rust-analyzer
+./rust.sh --rust nightly               # Install nightly toolchain
+./rust.sh --rust 1.83.0                # Pin specific version
+./rust.sh --skip-rust-analyzer         # Skip language server
+./rust.sh --yes                        # Non-interactive
+```
+
 Uses official rustup installer - just a wrapper for convenience.
+
+### Go Script
+```bash
+./golang.sh                            # Latest Go + gopls
+./golang.sh --go 1.25.1                # Pin specific version
+./golang.sh --gopls v0.20.0            # Pin gopls version
+./golang.sh --skip-gopls               # Skip language server
+./golang.sh --yes                      # Non-interactive
+```
+
+### Bun Script
+```bash
+./bun.sh                               # Latest Bun
+./bun.sh --bun 1.2.23                  # Pin specific version
+./bun.sh --upgrade                     # Upgrade existing installation
+./bun.sh --yes                         # Non-interactive
+```
 
 ### Gadgets Script
 ```bash

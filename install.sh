@@ -5,7 +5,8 @@
 #   curl -fsSL https://toolchain.acodechef.dev/install.sh | sh
 #   curl -fsSL https://toolchain.acodechef.dev/install.sh | sh -s -- --yes
 #   curl -fsSL https://toolchain.acodechef.dev/install.sh | sh -s -- --only-rust --only-go
-set -eu
+set -e
+set -u
 
 # Colors
 RED='\033[0;31m'
@@ -31,20 +32,20 @@ INSTALL_GOLANG=1
 INSTALL_BUN=1
 INSTALL_GADGETS=1
 
-# Track which tools to install
-REQUESTED_TOOLS=()
-GADGETS_ARGS=()
+# Track which tools to install (space-separated strings for POSIX compatibility)
+REQUESTED_TOOLS=""
+GADGETS_ARGS=""
 
 # ---- CLI Argument Parsing ----
-while [[ $# -gt 0 ]]; do
+while [ $# -gt 0 ]; do
   case "$1" in
-    --only-zig)     REQUESTED_TOOLS+=("zig"); shift ;;
-    --only-rust)    REQUESTED_TOOLS+=("rust"); shift ;;
-    --only-golang)  REQUESTED_TOOLS+=("golang"); shift ;;
-    --only-go)      REQUESTED_TOOLS+=("golang"); shift ;;
-    --only-bun)     REQUESTED_TOOLS+=("bun"); shift ;;
-    --only-gadgets) REQUESTED_TOOLS+=("gadgets"); shift ;;
-    --only-jq)      REQUESTED_TOOLS+=("gadgets"); GADGETS_ARGS+=("--only-jq"); shift ;;
+    --only-zig)     REQUESTED_TOOLS="${REQUESTED_TOOLS} zig"; shift ;;
+    --only-rust)    REQUESTED_TOOLS="${REQUESTED_TOOLS} rust"; shift ;;
+    --only-golang)  REQUESTED_TOOLS="${REQUESTED_TOOLS} golang"; shift ;;
+    --only-go)      REQUESTED_TOOLS="${REQUESTED_TOOLS} golang"; shift ;;
+    --only-bun)     REQUESTED_TOOLS="${REQUESTED_TOOLS} bun"; shift ;;
+    --only-gadgets) REQUESTED_TOOLS="${REQUESTED_TOOLS} gadgets"; shift ;;
+    --only-jq)      REQUESTED_TOOLS="${REQUESTED_TOOLS} gadgets"; GADGETS_ARGS="${GADGETS_ARGS} --only-jq"; shift ;;
     --skip-zig)     INSTALL_ZIG=0; shift ;;
     --skip-rust)    INSTALL_RUST=0; shift ;;
     --skip-golang)  INSTALL_GOLANG=0; shift ;;
@@ -98,7 +99,7 @@ USAGE
 done
 
 # If any --only-* flags were provided, switch to "only" mode
-if [[ ${#REQUESTED_TOOLS[@]} -gt 0 ]]; then
+if [ -n "${REQUESTED_TOOLS}" ]; then
   # Disable all tools first
   INSTALL_ZIG=0
   INSTALL_RUST=0
@@ -107,7 +108,7 @@ if [[ ${#REQUESTED_TOOLS[@]} -gt 0 ]]; then
   INSTALL_GADGETS=0
 
   # Enable only requested tools
-  for tool in "${REQUESTED_TOOLS[@]}"; do
+  for tool in ${REQUESTED_TOOLS}; do
     case "$tool" in
       zig)     INSTALL_ZIG=1 ;;
       rust)    INSTALL_RUST=1 ;;
@@ -143,7 +144,7 @@ download_script() {
   local script_url="${BASE_URL}/${script_name}"
 
   log "Downloading ${script_name}..."
-  if [[ "$DOWNLOADER" == "curl" ]]; then
+  if [ "$DOWNLOADER" = "curl" ]; then
     curl -fsSL -o "${script_path}" "${script_url}" || error "Failed to download ${script_name}"
   else
     wget -q -O "${script_path}" "${script_url}" || error "Failed to download ${script_name}"
@@ -154,18 +155,20 @@ download_script() {
 }
 
 # ---- Installation orchestration ----
-INSTALLED_TOOLS=()
-SKIPPED_TOOLS=()
+INSTALLED_TOOLS=""
+SKIPPED_TOOLS=""
 
 install_tool() {
   local tool_name="$1"
   local script_name="$2"
   local install_flag="$3"
   shift 3
-  local extra_args=("$@")
+  # extra_args stored as space-separated string (remaining args after shift)
+  local extra_args="$*"
 
-  if [[ "${install_flag}" -eq 0 ]]; then
-    SKIPPED_TOOLS+=("${tool_name}")
+  if [ "${install_flag}" -eq 0 ]; then
+    log "Skipping ${tool_name} (install_flag=${install_flag})"
+    SKIPPED_TOOLS="${SKIPPED_TOOLS} ${tool_name}"
     return 0
   fi
 
@@ -176,59 +179,69 @@ install_tool() {
   local script_path="${TOOLCHAIN_DIR}/${script_name}"
   local needs_download=0
 
-  if [[ ! -f "${script_path}" ]]; then
+  if [ ! -f "${script_path}" ]; then
     needs_download=1
   else
-    # Get remote checksum
+    # Get remote checksum (optional - gracefully handle missing checksums.txt)
     local remote_sum=""
-    if [[ "$DOWNLOADER" == "curl" ]]; then
-      remote_sum=$(curl -fsSL "${BASE_URL}/checksums.txt" | grep "${script_name}" | awk '{print $1}' || echo "")
+    if [ "$DOWNLOADER" = "curl" ]; then
+      remote_sum=$(curl -fsSL "${BASE_URL}/checksums.txt" 2>/dev/null | grep "${script_name}" | awk '{print $1}' || echo "")
     else
-      remote_sum=$(wget -qO- "${BASE_URL}/checksums.txt" | grep "${script_name}" | awk '{print $1}' || echo "")
+      remote_sum=$(wget -qO- "${BASE_URL}/checksums.txt" 2>/dev/null | grep "${script_name}" | awk '{print $1}' || echo "")
     fi
 
-    # Get local checksum
-    local local_sum=""
-    if command -v sha256sum >/dev/null 2>&1; then
-      local_sum=$(sha256sum "${script_path}" | awk '{print $1}')
-    elif command -v shasum >/dev/null 2>&1; then
-      local_sum=$(shasum -a 256 "${script_path}" | awk '{print $1}')
-    fi
+    # If we have a remote checksum, verify it
+    if [ -n "${remote_sum}" ]; then
+      # Get local checksum
+      local local_sum=""
+      if command -v sha256sum >/dev/null 2>&1; then
+        local_sum=$(sha256sum "${script_path}" | awk '{print $1}')
+      elif command -v shasum >/dev/null 2>&1; then
+        local_sum=$(shasum -a 256 "${script_path}" | awk '{print $1}')
+      fi
 
-    # Compare checksums
-    if [[ -z "${remote_sum}" ]]; then
-      error "Failed to fetch remote checksum for ${script_name}. Cannot verify script integrity."
-    fi
-
-    if [[ -z "${local_sum}" ]]; then
-      error "Failed to calculate local checksum for ${script_name}. Install sha256sum or shasum."
-    fi
-
-    if [[ "${remote_sum}" != "${local_sum}" ]]; then
-      log "Script has been updated, downloading latest version..."
+      if [ -z "${local_sum}" ]; then
+        warn "Failed to calculate local checksum for ${script_name}"
+        needs_download=1
+      elif [ "${remote_sum}" != "${local_sum}" ]; then
+        log "Script has been updated, downloading latest version..."
+        needs_download=1
+      fi
+    else
+      # No checksum available, always re-download to be safe
+      log "No checksum available for ${script_name}, re-downloading..."
       needs_download=1
     fi
   fi
 
-  if [[ "${needs_download}" -eq 1 ]]; then
+  if [ "${needs_download}" -eq 1 ]; then
     download_script "${script_name}"
+  else
+    log "Using cached ${script_name}"
   fi
 
   # Execute installer
-  local installer_args=()
-  [[ "${AUTO_YES}" -eq 1 ]] && installer_args+=("--yes")
+  # Always pass --yes since subscripts run non-interactively (stdin is /dev/null)
+  local installer_args="--yes"
 
   # Add any extra args (e.g., --only-jq for gadgets.sh)
-  if [[ ${#extra_args[@]} -gt 0 ]]; then
-    installer_args+=("${extra_args[@]}")
+  if [ -n "${extra_args}" ]; then
+    installer_args="${installer_args} ${extra_args}"
   fi
 
-  if bash "${TOOLCHAIN_DIR}/${script_name}" "${installer_args[@]+"${installer_args[@]}"}"; then
-    INSTALLED_TOOLS+=("${tool_name}")
+  # Run the installer as executable (respects shebang)
+  # Redirect stdin from /dev/null to prevent subscripts from consuming parent script's stdin
+  if "${TOOLCHAIN_DIR}/${script_name}" ${installer_args} </dev/null; then
+    INSTALLED_TOOLS="${INSTALLED_TOOLS} ${tool_name}"
     success "${tool_name} installation completed"
   else
-    warn "${tool_name} installation failed or was skipped"
-    SKIPPED_TOOLS+=("${tool_name}")
+    local exit_code=$?
+    printf "${RED}[ERROR]${NC} ❌ ${tool_name} installation FAILED with exit code ${exit_code}\n"
+    echo "Script location: ${TOOLCHAIN_DIR}/${script_name}"
+    echo "Try running it manually to see the error:"
+    echo "  bash ${TOOLCHAIN_DIR}/${script_name}"
+    SKIPPED_TOOLS="${SKIPPED_TOOLS} ${tool_name}"
+    return 1
   fi
 
   echo ""
@@ -240,11 +253,17 @@ log "Starting toolchain installation..."
 echo ""
 
 # Install in order
-install_tool "Zig" "zig.sh" "${INSTALL_ZIG}"
-install_tool "Rust" "rust.sh" "${INSTALL_RUST}"
-install_tool "Go" "golang.sh" "${INSTALL_GOLANG}"
-install_tool "Bun" "bun.sh" "${INSTALL_BUN}"
-install_tool "Gadgets" "gadgets.sh" "${INSTALL_GADGETS}" "${GADGETS_ARGS[@]+"${GADGETS_ARGS[@]}"}"
+log "Debug: INSTALL_ZIG=${INSTALL_ZIG}, INSTALL_RUST=${INSTALL_RUST}, INSTALL_GOLANG=${INSTALL_GOLANG}, INSTALL_BUN=${INSTALL_BUN}, INSTALL_GADGETS=${INSTALL_GADGETS}"
+log "About to install Zig..."
+install_tool "Zig" "zig.sh" "${INSTALL_ZIG}" || warn "Zig installation returned error, continuing..."
+log "About to install Rust..."
+install_tool "Rust" "rust.sh" "${INSTALL_RUST}" || warn "Rust installation returned error, continuing..."
+log "About to install Go..."
+install_tool "Go" "golang.sh" "${INSTALL_GOLANG}" || warn "Go installation returned error, continuing..."
+log "About to install Bun..."
+install_tool "Bun" "bun.sh" "${INSTALL_BUN}" || warn "Bun installation returned error, continuing..."
+log "About to install Gadgets..."
+install_tool "Gadgets" "gadgets.sh" "${INSTALL_GADGETS}" "--bindir ${BIN_DIR}" ${GADGETS_ARGS} || warn "Gadgets installation returned error, continuing..."
 
 # ---- Summary ----
 echo ""
@@ -253,17 +272,17 @@ success "Toolchain installation complete!"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-if [[ ${#INSTALLED_TOOLS[@]} -gt 0 ]]; then
+if [ -n "${INSTALLED_TOOLS}" ]; then
   log "Tools installed:"
-  for tool in "${INSTALLED_TOOLS[@]}"; do
+  for tool in ${INSTALLED_TOOLS}; do
     echo "  ✓ ${tool}"
   done
   echo ""
 fi
 
-if [[ ${#SKIPPED_TOOLS[@]} -gt 0 ]]; then
+if [ -n "${SKIPPED_TOOLS}" ]; then
   log "Tools skipped:"
-  for tool in "${SKIPPED_TOOLS[@]}"; do
+  for tool in ${SKIPPED_TOOLS}; do
     echo "  - ${tool}"
   done
   echo ""
@@ -272,7 +291,7 @@ fi
 log "Toolchain directory: ${TOOLCHAIN_DIR}"
 log "Scripts are cached and can be re-run individually:"
 for script in zig.sh rust.sh golang.sh bun.sh gadgets.sh; do
-  if [[ -f "${TOOLCHAIN_DIR}/${script}" ]]; then
+  if [ -f "${TOOLCHAIN_DIR}/${script}" ]; then
     echo "  ${TOOLCHAIN_DIR}/${script}"
   fi
 done

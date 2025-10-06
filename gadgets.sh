@@ -231,9 +231,9 @@ install_github_binary() {
   log "Fetching latest ${tool} release..."
   local release_json
   if [[ "$DOWNLOADER" == "curl" ]]; then
-    release_json=$(curl -fsSL "${AUTH_HEADER[@]}" "https://api.github.com/repos/${repo}/releases/latest")
+    release_json=$(curl -fsSL ${AUTH_HEADER[@]+"${AUTH_HEADER[@]}"} "https://api.github.com/repos/${repo}/releases/latest")
   else
-    wget "${AUTH_HEADER[@]}" -qO- "https://api.github.com/repos/${repo}/releases/latest"
+    release_json=$(wget ${AUTH_HEADER[@]+"${AUTH_HEADER[@]}"} -qO- "https://api.github.com/repos/${repo}/releases/latest")
   fi
 
   local version=$(echo "$release_json" | jq -r '.tag_name // .name')
@@ -373,14 +373,22 @@ install_zoxide() {
 
 # Individual tool installers using install_github_binary
 install_astgrep() {
-  [[ "${INSTALL_ASTGREP}" -eq 0 ]] && return 0
+  [[ "${INSTALL_ASTGREP}" -eq 0 ]] && { warn "Skipping ast-grep"; return 0; }
+
+  if command -v sg >/dev/null 2>&1; then
+    log "ast-grep already installed: $(sg --version 2>/dev/null | head -n1 || echo 'unknown')"
+    if [[ "${AUTO_YES}" -eq 0 ]]; then
+      read -p "Reinstall ast-grep? [y/N] " -r REPLY
+      [[ ! $REPLY =~ ^[Yy]$ ]] && { warn "Skipping ast-grep"; return 0; }
+    fi
+  fi
 
   local pattern
   case "${OS_TYPE}-${ARCH_TYPE}" in
-    linux-x86_64)   pattern="app-x86_64-unknown-linux-gnu\\.zip" ;;
-    linux-aarch64)  pattern="app-aarch64-unknown-linux-gnu\\.zip" ;;
-    darwin-x86_64)  pattern="app-x86_64-apple-darwin\\.zip" ;;
-    darwin-arm64)   pattern="app-aarch64-apple-darwin\\.zip" ;;
+    linux-x86_64)   pattern="app-x86_64-unknown-linux-gnu\\\\.zip" ;;
+    linux-aarch64)  pattern="app-aarch64-unknown-linux-gnu\\\\.zip" ;;
+    darwin-x86_64)  pattern="app-x86_64-apple-darwin\\\\.zip" ;;
+    darwin-arm64)   pattern="app-aarch64-apple-darwin\\\\.zip" ;;
     *) error "Unsupported platform for ast-grep: ${OS_TYPE}-${ARCH_TYPE}" ;;
   esac
 
@@ -388,29 +396,58 @@ install_astgrep() {
 }
 
 install_curlie() {
-  [[ "${INSTALL_CURLIE}" -eq 0 ]] && return 0
+  [[ "${INSTALL_CURLIE}" -eq 0 ]] && { warn "Skipping curlie"; return 0; }
+
+  if command -v curlie >/dev/null 2>&1; then
+    log "curlie already installed: $(curlie --version 2>/dev/null || echo 'unknown')"
+    if [[ "${AUTO_YES}" -eq 0 ]]; then
+      read -p "Reinstall curlie? [y/N] " -r REPLY
+      [[ ! $REPLY =~ ^[Yy]$ ]] && { warn "Skipping curlie"; return 0; }
+    fi
+  fi
 
   local os_name="${OS_TYPE}"
   local arch_name="${ARCH_TYPE}"
   [[ "$arch_name" == "aarch64" ]] && arch_name="arm64"
 
-  local pattern="curlie_.*_${os_name}_${arch_name}\\.tar\\.gz"
+  local pattern="curlie_.*_${os_name}_${arch_name}\\\\.tar\\\\.gz"
   install_github_binary "rs/curlie" "curlie" "$pattern"
 }
 
 install_doggo() {
-  [[ "${INSTALL_DOGGO}" -eq 0 ]] && return 0
+  [[ "${INSTALL_DOGGO}" -eq 0 ]] && { warn "Skipping doggo"; return 0; }
+
+  if command -v doggo >/dev/null 2>&1; then
+    log "doggo already installed: $(doggo version 2>/dev/null || echo 'unknown')"
+    if [[ "${AUTO_YES}" -eq 0 ]]; then
+      read -p "Reinstall doggo? [y/N] " -r REPLY
+      [[ ! $REPLY =~ ^[Yy]$ ]] && { warn "Skipping doggo"; return 0; }
+    fi
+  fi
 
   # Capitalize first letter for doggo naming (Darwin, Linux)
-  local os_name="${OS_TYPE^}"
+  local os_name
+  case "${OS_TYPE}" in
+    linux)  os_name="Linux" ;;
+    darwin) os_name="Darwin" ;;
+    *) error "Unsupported OS for doggo: ${OS_TYPE}" ;;
+  esac
   local arch_name="${ARCH_TYPE}"
 
-  local pattern="doggo_.*_${os_name}_${arch_name}\\.tar\\.gz"
+  local pattern="doggo_.*_${os_name}_${arch_name}\\\\.tar\\\\.gz"
   install_github_binary "mr-karan/doggo" "doggo" "$pattern"
 }
 
 install_duf() {
-  [[ "${INSTALL_DUF}" -eq 0 ]] && return 0
+  [[ "${INSTALL_DUF}" -eq 0 ]] && { warn "Skipping duf"; return 0; }
+
+  if command -v duf >/dev/null 2>&1; then
+    log "duf already installed: $(duf --version 2>/dev/null | head -n1 || echo 'unknown')"
+    if [[ "${AUTO_YES}" -eq 0 ]]; then
+      read -p "Reinstall duf? [y/N] " -r REPLY
+      [[ ! $REPLY =~ ^[Yy]$ ]] && { warn "Skipping duf"; return 0; }
+    fi
+  fi
 
   local os_name="${OS_TYPE}"
   local arch_name
@@ -420,12 +457,20 @@ install_duf() {
     arm64)    arch_name="arm64" ;;
   esac
 
-  local pattern="duf_.*_${os_name}_${arch_name}\\.tar\\.gz"
+  local pattern="duf_.*_${os_name}_${arch_name}\\\\.tar\\\\.gz"
   install_github_binary "muesli/duf" "duf" "$pattern"
 }
 
 install_fzf() {
-  [[ "${INSTALL_FZF}" -eq 0 ]] && return 0
+  [[ "${INSTALL_FZF}" -eq 0 ]] && { warn "Skipping fzf"; return 0; }
+
+  if command -v fzf >/dev/null 2>&1; then
+    log "fzf already installed: $(fzf --version 2>/dev/null || echo 'unknown')"
+    if [[ "${AUTO_YES}" -eq 0 ]]; then
+      read -p "Reinstall fzf? [y/N] " -r REPLY
+      [[ ! $REPLY =~ ^[Yy]$ ]] && { warn "Skipping fzf"; return 0; }
+    fi
+  fi
 
   local os_name="${OS_TYPE}"
   local arch_name
@@ -435,19 +480,27 @@ install_fzf() {
     arm64)    arch_name="arm64" ;;
   esac
 
-  local pattern="fzf-.*-${os_name}_${arch_name}\\.tar\\.gz"
+  local pattern="fzf-.*-${os_name}_${arch_name}\\\\.tar\\\\.gz"
   install_github_binary "junegunn/fzf" "fzf" "$pattern"
 }
 
 install_hexyl() {
-  [[ "${INSTALL_HEXYL}" -eq 0 ]] && return 0
+  [[ "${INSTALL_HEXYL}" -eq 0 ]] && { warn "Skipping hexyl"; return 0; }
+
+  if command -v hexyl >/dev/null 2>&1; then
+    log "hexyl already installed: $(hexyl --version 2>/dev/null | head -n1 || echo 'unknown')"
+    if [[ "${AUTO_YES}" -eq 0 ]]; then
+      read -p "Reinstall hexyl? [y/N] " -r REPLY
+      [[ ! $REPLY =~ ^[Yy]$ ]] && { warn "Skipping hexyl"; return 0; }
+    fi
+  fi
 
   local pattern
   case "${OS_TYPE}-${ARCH_TYPE}" in
-    linux-x86_64)   pattern="hexyl-v.*-x86_64-unknown-linux-musl\\.tar\\.gz" ;;
-    linux-aarch64)  pattern="hexyl-v.*-aarch64-unknown-linux-musl\\.tar\\.gz" ;;
-    darwin-x86_64)  pattern="hexyl-v.*-x86_64-apple-darwin\\.tar\\.gz" ;;
-    darwin-arm64)   pattern="hexyl-v.*-aarch64-apple-darwin\\.tar\\.gz" ;;
+    linux-x86_64)   pattern="hexyl-v.*-x86_64-unknown-linux-musl\\\\.tar\\\\.gz" ;;
+    linux-aarch64)  pattern="hexyl-v.*-aarch64-unknown-linux-musl\\\\.tar\\\\.gz" ;;
+    darwin-x86_64)  pattern="hexyl-v.*-x86_64-apple-darwin\\\\.tar\\\\.gz" ;;
+    darwin-arm64)   pattern="hexyl-v.*-aarch64-apple-darwin\\\\.tar\\\\.gz" ;;
     *) error "Unsupported platform for hexyl: ${OS_TYPE}-${ARCH_TYPE}" ;;
   esac
 
@@ -455,7 +508,15 @@ install_hexyl() {
 }
 
 install_yq() {
-  [[ "${INSTALL_YQ}" -eq 0 ]] && return 0
+  [[ "${INSTALL_YQ}" -eq 0 ]] && { warn "Skipping yq"; return 0; }
+
+  if command -v yq >/dev/null 2>&1; then
+    log "yq already installed: $(yq --version 2>/dev/null || echo 'unknown')"
+    if [[ "${AUTO_YES}" -eq 0 ]]; then
+      read -p "Reinstall yq? [y/N] " -r REPLY
+      [[ ! $REPLY =~ ^[Yy]$ ]] && { warn "Skipping yq"; return 0; }
+    fi
+  fi
 
   local os_name="${OS_TYPE}"
   local arch_name
@@ -471,14 +532,22 @@ install_yq() {
 }
 
 install_ripgrep() {
-  [[ "${INSTALL_RIPGREP}" -eq 0 ]] && return 0
+  [[ "${INSTALL_RIPGREP}" -eq 0 ]] && { warn "Skipping ripgrep"; return 0; }
+
+  if command -v rg >/dev/null 2>&1; then
+    log "ripgrep already installed: $(rg --version 2>/dev/null | head -n1 || echo 'unknown')"
+    if [[ "${AUTO_YES}" -eq 0 ]]; then
+      read -p "Reinstall ripgrep? [y/N] " -r REPLY
+      [[ ! $REPLY =~ ^[Yy]$ ]] && { warn "Skipping ripgrep"; return 0; }
+    fi
+  fi
 
   local pattern
   case "${OS_TYPE}-${ARCH_TYPE}" in
-    linux-x86_64)   pattern="ripgrep-.*-x86_64-unknown-linux-musl\\.tar\\.gz" ;;
-    linux-aarch64)  pattern="ripgrep-.*-aarch64-unknown-linux-gnu\\.tar\\.gz" ;;
-    darwin-x86_64)  pattern="ripgrep-.*-x86_64-apple-darwin\\.tar\\.gz" ;;
-    darwin-arm64)   pattern="ripgrep-.*-aarch64-apple-darwin\\.tar\\.gz" ;;
+    linux-x86_64)   pattern="ripgrep-.*-x86_64-unknown-linux-musl\\\\.tar\\\\.gz" ;;
+    linux-aarch64)  pattern="ripgrep-.*-aarch64-unknown-linux-gnu\\\\.tar\\\\.gz" ;;
+    darwin-x86_64)  pattern="ripgrep-.*-x86_64-apple-darwin\\\\.tar\\\\.gz" ;;
+    darwin-arm64)   pattern="ripgrep-.*-aarch64-apple-darwin\\\\.tar\\\\.gz" ;;
     *) error "Unsupported platform for ripgrep: ${OS_TYPE}-${ARCH_TYPE}" ;;
   esac
 
